@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Финансы</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f3f2f8; padding: 15px; margin: 0; color: #000; }
+        .card { background: #fff; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; }
+        button { background: #007aff; color: white; font-weight: bold; border: none; padding: 15px; }
+        .progress-bar { width: 100%; background: #e0e0e0; border-radius: 8px; height: 10px; margin-top: 5px; overflow: hidden; }
+        .progress-fill { height: 100%; background: #34c759; transition: width 0.3s; }
+        .progress-fill.over { background: #ff3b30; }
+        .cat-item { margin-bottom: 15px; }
+        .cat-header { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px;}
+        h3 { margin-top: 0; font-size: 18px;}
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h3>Добавить расход</h3>
+        <input type="number" id="amount" placeholder="Сумма (BYN)" inputmode="decimal">
+        <input type="text" id="desc" placeholder="Что купили? (Например: такси до Дана Молл)" oninput="autoCategorize()">
+        <select id="category">
+            <option value="Продукты">Продукты</option>
+            <option value="Еда, кофе">Еда, кофе</option>
+            <option value="МТС">МТС</option>
+            <option value="Проезд">Проезд</option>
+            <option value="Другой транспорт">Другой транспорт</option>
+            <option value="Реклама">Реклама</option>
+            <option value="Налоговая">Налоговая</option>
+            <option value="Коммуналка">Коммуналка</option>
+            <option value="Wildberries, Ozon">Wildberries, Ozon</option>
+            <option value="Массаж">Массаж</option>
+            <option value="Медицина">Медицина</option>
+            <option value="Аптека">Аптека</option>
+            <option value="Стрижка">Стрижка</option>
+            <option value="Тренерский абонемент">Тренерский абонемент</option>
+            <option value="Подписки">Подписки</option>
+            <option value="Подарки">Подарки</option>
+            <option value="Другое">Другое</option>
+        </select>
+        <button onclick="sendData()">Сохранить</button>
+    </div>
+
+    <div class="card" id="dashboard">
+        <h3>Бюджет на месяц</h3>
+        <div id="categories-list">Загрузка...</div>
+    </div>
+
+    <script>
+        // ВАЖНО: ВСТАВЬТЕ СЮДА ВАШ URL ОТ GOOGLE APPS SCRIPT ИЗ ШАГА 2
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbwrE5L021wqwcE-FIwlWt4UXOW0ljyZYX6KoANTQlS_uHKwGK-QzPG1YQuxtnLIFd7gMQ/exec'; 
+
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // Словарь для умного определения категорий
+        const keywords = {
+            "Продукты": ["молоко", "хлеб", "мясо", "евроопт", "соседи", "магазин"],
+            "Еда, кофе": ["кафе", "кофе", "ресторан", "обед"],
+            "Медицина": ["врач", "лфк", "прием", "анализы"],
+            "Другой транспорт": ["такси", "яндекс", "uber", "дана", "dana", "каршеринг"],
+            "Проезд": ["метро", "талон", "автобус"],
+            "Аптека": ["таблетки", "витамины", "аптека"],
+            "МТС": ["мтс", "телефон", "интернет"],
+            "Тренерский абонемент": ["абонемент", "зал", "тренажерка"]
+        };
+
+        function autoCategorize() {
+            let text = document.getElementById('desc').value.toLowerCase();
+            let catSelect = document.getElementById('category');
+            
+            for (let category in keywords) {
+                if (keywords[category].some(word => text.includes(word))) {
+                    catSelect.value = category;
+                    break;
+                }
+            }
+        }
+
+        async function loadDashboard() {
+            let response = await fetch(GAS_URL + '?action=getData');
+            let data = await response.json();
+            
+            let html = '';
+            for (let cat in data) {
+                let limit = data[cat].limit;
+                if (limit === 0 && data[cat].spent === 0) continue; // Скрываем пустые категории
+
+                let spent = data[cat].spent;
+                let percent = limit > 0 ? (spent / limit) * 100 : 0;
+                let isOver = spent > limit;
+                let remaining = limit - spent;
+
+                html += `
+                    <div class="cat-item">
+                        <div class="cat-header">
+                            <strong>${cat}</strong>
+                            <span>Осталось: ${remaining.toFixed(2)} р.</span>
+                        </div>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 4px;">Потрачено ${spent.toFixed(2)} из ${limit} р.</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill ${isOver ? 'over' : ''}" style="width: ${Math.min(percent, 100)}%"></div>
+                        </div>
+                    </div>`;
+            }
+            document.getElementById('categories-list').innerHTML = html;
+        }
+
+        async function sendData() {
+            let amount = document.getElementById('amount').value;
+            let desc = document.getElementById('desc').value;
+            let cat = document.getElementById('category').value;
+
+            if (!amount) return alert("Введите сумму!");
+
+            tg.MainButton.text = "Сохранение...";
+            tg.MainButton.show();
+
+            let url = `${GAS_URL}?action=add&amount=${amount}&desc=${encodeURIComponent(desc)}&category=${encodeURIComponent(cat)}`;
+            await fetch(url);
+            
+            tg.close(); // Закрываем окно после успешного сохранения
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>
